@@ -14,7 +14,7 @@ The project aims to make vulnerability tracking and assessment easier through a 
 
 Screenshots
 
-"VulnGuard Dashboard" (screenshots/dashboard.png)
+VulnGuard Dashboard (screenshots/dashboard.png)
 
 Features
 

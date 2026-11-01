@@ -118,13 +118,6 @@ Future Improvements
 - More security assessment integrations.
 - Improved dashboard analytics.
 
-Project Background and Credits
-
-VulnGuard was developed as a learning and development project, using the following repository as a reference:
-
-"Original Reference Repository" (https://github.com/Smriti-ss/vulnerability_dashboard)
-
-The project has been adapted and customized for its own development purposes.
 
 License
 

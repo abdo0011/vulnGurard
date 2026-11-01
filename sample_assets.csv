@@ -1,0 +1,9 @@
+name,ip_address,asset_type,operating_system,owner,description
+webapp.production.com,10.0.1.10,Website,Ubuntu 22.04,Jane Doe,Customer-facing production web application
+app.example.com,10.0.1.11,Website,Debian 12,Jane Doe,Main application front end
+auth.example.com,10.0.1.20,Server,Ubuntu 22.04,Omar Hassan,Authentication service
+api.example.com,10.0.1.30,Server,Alpine Linux 3.19,Omar Hassan,Public REST API
+portal.example.com,10.0.1.40,Website,Windows Server 2022,Sara Ali,Customer portal
+db-primary,10.0.2.5,Database,Ubuntu 22.04,DBA Team,Primary PostgreSQL database
+core-switch-01,10.0.0.2,Network Device,Cisco IOS XE,Network Team,Core switch
+ws-finance-07,192.168.10.57,Workstation,Windows 11,Finance Dept,Finance analyst workstation

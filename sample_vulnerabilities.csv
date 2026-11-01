@@ -1,0 +1,11 @@
+title,description,severity,status,asset,cvss_score,discovered_date
+SQL Injection in Login Form,User authentication endpoint accepts unescaped SQL queries,Critical,Open,webapp.production.com,9.8,2026-01-15 10:30:00
+XSS in Search Function,Reflected XSS vulnerability in search parameter,High,In Progress,app.example.com,7.3,2026-01-14 14:20:00
+Weak Password Policy,System allows passwords as short as 4 characters,High,Open,auth.example.com,8.1,2026-01-13 09:15:00
+Sensitive Data Exposure,API returns PII without authorization checks,Critical,Fixed,api.example.com,9.1,2026-01-12 16:45:00
+Missing Security Headers,Application lacks critical security headers,Medium,Open,portal.example.com,5.3,2026-01-11 11:00:00
+IDOR Vulnerability,Users can access other users data by ID manipulation,High,In Progress,dashboard.example.com,7.5,2026-01-10 13:30:00
+Outdated jQuery Library,Application uses jQuery v1.8.3 with known CVEs,Medium,Open,legacy.example.com,6.1,2026-01-09 08:50:00
+SSRF in Upload Feature,Image upload allows arbitrary URL fetching,High,Fixed,upload.example.com,8.6,2026-01-08 15:20:00
+XXE Injection,XML parser accepts external entity declarations,Critical,In Progress,api.xml.example.com,9.0,2026-01-07 10:10:00
+Insufficient Rate Limiting,Password reset has no rate limiting,Low,Open,auth.example.com,4.3,2026-01-06 12:40:00

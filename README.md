@@ -117,8 +117,3 @@ Future Improvements
 - Detailed vulnerability reports.
 - More security assessment integrations.
 - Improved dashboard analytics.
-
-
-License
-
-This project is licensed under the MIT License. See the "LICENSE" file for details.

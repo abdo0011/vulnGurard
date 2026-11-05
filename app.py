@@ -682,5 +682,14 @@ def import_assets_csv():
 
 
 if __name__ == '__main__':
-    # Set FLASK_DEBUG=1 for auto-reload during development. Bound to localhost only.
-    app.run(host='127.0.0.1', debug=os.environ.get('FLASK_DEBUG') == '1', port=5000)
+    # Set FLASK_DEBUG=1 for auto-reload during development. Bound to localhost by default.
+    # Listening on any other address (VULNGUARD_HOST) requires VULNGUARD_API_TOKEN and
+    # is refused in debug mode; see scanner/config.py.
+    from scanner.config import ConfigError, check_network_binding, ENV_API_TOKEN, ENV_HOST
+    bind_host = os.environ.get(ENV_HOST, '127.0.0.1')
+    debug_mode = os.environ.get('FLASK_DEBUG') == '1'
+    try:
+        check_network_binding(bind_host, debug_mode, os.environ.get(ENV_API_TOKEN))
+    except ConfigError as exc:
+        raise SystemExit(f'VulnGuard: {exc}')
+    app.run(host=bind_host, debug=debug_mode, port=5000)

@@ -3,6 +3,8 @@ import hashlib
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit, urlunsplit
 
+from .sanitize import sanitize_urls, scrub_text
+
 SEVERITIES = ('Critical', 'High', 'Medium', 'Low', 'Informational')
 # Confirmed: the evidence directly proves the issue (e.g. a header is absent, a certificate is expired).
 # Potential: a heuristic indicates the issue but cannot prove it.
@@ -18,15 +20,24 @@ def _normalize_url(url):
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path or '/', parts.query, ''))
 
 
-@dataclass
+@dataclass(repr=False)          # __repr__ is defined below: the generated one would print every field
 class Finding:
+    """
+    URL handling (security): `affected_urls` holds the REAL crawled URLs and is the finding's INTERNAL page
+    identity, needed for de-duplication and fingerprints (pages that differ only by query value must stay
+    distinct). Treat it as internal: do not print, log, store or return it. Everything outward-facing uses
+    the sanitized forms: `display_urls` / `display_url` / `affected_url`, `to_dict()` and `repr()`.
+    Note that dataclasses.asdict() and vars() are not guarded and would expose the raw list. Flask's default
+    JSON provider calls dataclasses.asdict() on dataclasses, so jsonify(finding) would leak it too: always
+    serialize with to_dict() (tests/test_repr_exposure.py characterizes and guards this).
+    """
     rule_id: str                    # stable identifier of the check, e.g. 'HDR-CSP-MISSING'
     title: str
     category: str                   # one of detectors.CATEGORIES
     severity: str
     confidence: str
     description: str
-    affected_urls: list
+    affected_urls: list = field(repr=False)     # INTERNAL page identity (real URLs); never log or serialize raw
     evidence: str
     impact: str
     remediation: str
@@ -51,7 +62,23 @@ class Finding:
 
     @property
     def affected_url(self):
-        return self.affected_urls[0]
+        """Primary affected page, SANITIZED (public). The raw URL is only available as affected_urls[0]."""
+        return self.display_urls[0]
+
+    @property
+    def display_urls(self):
+        """Sanitized URLs for display and serialization (one per internal URL, same order and count)."""
+        return sanitize_urls(self.affected_urls)
+
+    @property
+    def display_url(self):
+        return self.display_urls[0]
+
+    def __repr__(self):
+        # Built only from sanitized parts, so repr()/str()/format()/%s and logging a Finding, a list of
+        # Findings or a ScanOutcome never print a raw URL, evidence, extra or any other free-text field.
+        return (f'Finding(rule_id={self.rule_id!r}, severity={self.severity!r}, '
+                f'confidence={self.confidence!r}, urls={self.display_urls!r})')
 
     def fingerprint(self):
         """
@@ -64,12 +91,21 @@ class Finding:
         return hashlib.sha256(f'{self.rule_id}|{key}'.encode()).hexdigest()[:32]
 
     def to_dict(self):
+        """
+        Serialized form used by the API/UI. SECURITY: this is the single output guard, so every
+        URL is sanitized (query values, fragments and credentials removed) and every text field is
+        redacted and URL-scrubbed here, whatever a detector put into the Finding. The in-memory
+        Finding keeps the original URLs as its internal page identity (url-scope fingerprints and
+        de-duplication depend on them), so distinct pages are never merged; the sanitized list has
+        the same length and order.
+        """
+        urls = self.display_urls
         return {
-            'rule_id': self.rule_id, 'title': self.title, 'category': self.category,
+            'rule_id': self.rule_id, 'title': scrub_text(self.title), 'category': self.category,
             'severity': self.severity, 'confidence': self.confidence,
-            'description': self.description, 'affected_urls': self.affected_urls,
-            'affected_url': self.affected_url, 'evidence': self.evidence,
-            'impact': self.impact, 'remediation': self.remediation,
-            'reference': self.reference, 'detection_method': self.detection_method,
+            'description': scrub_text(self.description), 'affected_urls': urls,
+            'affected_url': urls[0], 'evidence': scrub_text(self.evidence),
+            'impact': scrub_text(self.impact), 'remediation': scrub_text(self.remediation),
+            'reference': scrub_text(self.reference), 'detection_method': scrub_text(self.detection_method),
             'fingerprint': self.fingerprint(),
         }

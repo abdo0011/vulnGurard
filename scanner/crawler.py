@@ -12,6 +12,7 @@ from urllib.parse import urldefrag, urljoin
 
 from . import config as cfg
 from .http_client import FetchError, HttpResponse, RequestBudgetExceeded
+from .sanitize import sanitize_url
 from .scope_validator import ScopeError, check_in_scope
 
 _SKIP_EXTENSIONS = re.compile(
@@ -52,19 +53,29 @@ def extract_links(html_text, base_url):
     return out
 
 
-@dataclass
+@dataclass(repr=False)
 class Page:
     url: str
     depth: int
     response: HttpResponse
 
+    def __repr__(self):                 # representation only: sanitized URL, response repr is already safe
+        return f'Page(url={sanitize_url(self.url)!r}, depth={self.depth!r}, response={self.response!r})'
 
-@dataclass
+
+@dataclass(repr=False)
 class CrawlResult:
     pages: list = field(default_factory=list)
     skipped: list = field(default_factory=list)       # [(url, reason)]
     errors: list = field(default_factory=list)        # [(url, kind)]
     stopped_reason: object = None                     # e.g. 'request_budget'
+
+    def __repr__(self):
+        # skipped/errors hold raw URLs: show only counts and the machine-readable reason/kind codes.
+        reasons = sorted({str(item[1]) for item in self.skipped if len(item) > 1})
+        kinds = sorted({str(item[1]) for item in self.errors if len(item) > 1})
+        return (f'CrawlResult(pages=<{len(self.pages)}>, skipped=<{len(self.skipped)}: {reasons}>, '
+                f'errors=<{len(self.errors)}: {kinds}>, stopped_reason={self.stopped_reason!r})')
 
 
 def crawl(client, start_url, max_depth=cfg.MAX_DEPTH, max_pages=cfg.MAX_PAGES, progress=None):

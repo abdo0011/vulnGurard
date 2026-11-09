@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 from .config import ScannerConfig
+from .sanitize import sanitize_url
 
 DEFAULT_PORTS = {'http': 80, 'https': 443}
 MAX_URL_LENGTH = 2048
@@ -33,7 +34,7 @@ class ScopeError(Exception):
         self.message = message
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ValidatedTarget:
     url: str            # normalized URL (no fragment, no credentials)
     scheme: str
@@ -41,6 +42,10 @@ class ValidatedTarget:
     port: int
     ips: tuple          # validated destination addresses (strings)
     is_lab: bool = False
+
+    def __repr__(self):                 # representation only: the URL may still carry a query string
+        return (f'ValidatedTarget(url={sanitize_url(self.url)!r}, scheme={self.scheme!r}, host={self.host!r}, '
+                f'port={self.port!r}, ips={self.ips!r}, is_lab={self.is_lab!r})')
 
     @property
     def origin(self):

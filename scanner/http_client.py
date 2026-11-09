@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urljoin
 
 from . import config as cfg
+from .sanitize import sanitize_url
 from .scope_validator import (ScopeError, ValidatedTarget, check_in_scope,
                               parse_url, resolve_and_validate)
 
@@ -42,7 +43,7 @@ class RequestBudgetExceeded(Exception):
     """The per-scan request cap was reached."""
 
 
-@dataclass
+@dataclass(repr=False)          # __repr__ below: the generated one would print the full URL, ALL headers and the body
 class HttpResponse:
     url: str
     method: str
@@ -57,6 +58,16 @@ class HttpResponse:
     elapsed: float = 0.0
     redirect_chain: list = field(default_factory=list)
     redirect_blocked: object = None    # (location, reason_code) if a redirect was NOT followed
+
+    def __repr__(self):
+        # Representation only. Never prints header values (Set-Cookie, Authorization, API keys), the body, or
+        # unsanitized URLs (query values, credentials, fragments), so logging a response cannot leak them.
+        blocked = (f', redirect_blocked={(sanitize_url(self.redirect_blocked[0]), self.redirect_blocked[1])!r}'
+                   if self.redirect_blocked else '')
+        return (f'HttpResponse(method={self.method!r}, url={sanitize_url(self.url)!r}, status={self.status!r}, '
+                f'scheme={self.scheme!r}, headers=<{len(self.headers or [])} headers>, '
+                f'body=<{len(self.body or b"")} bytes>, truncated={self.truncated!r}, '
+                f'redirects={len(self.redirect_chain or [])}{blocked})')
 
     def header(self, name):
         name = name.lower()

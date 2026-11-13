@@ -168,7 +168,9 @@ _r('COOKIE-NO-SECURE', 'Cookie without the Secure attribute', C, 'Medium', 'Medi
 _r('COOKIE-NO-HTTPONLY', 'Cookie without the HttpOnly attribute', C, 'Medium', 'Medium', WSTG_COOKIE,
    PASSIVE_COOKIES,
    'A cookie is set without HttpOnly, so client-side script can read it.',
-   'If the site has a cross-site scripting flaw, the cookie (for session cookies: the session) can be stolen.',
+   'If the site has a cross-site scripting flaw, script running in the page can read the cookie (for session '
+   'cookies: the session identifier). HttpOnly only blocks that one consequence; it does not prevent cross-site '
+   'scripting, and injected script can still act as the user.',
    'Add HttpOnly to cookies that scripts do not need to read, especially session and authentication cookies.')
 _r('COOKIE-SAMESITE-MISSING', 'Cookie without a valid SameSite attribute', C, 'Low', 'Medium', WSTG_COOKIE,
    PASSIVE_COOKIES,
@@ -177,10 +179,18 @@ _r('COOKIE-SAMESITE-MISSING', 'Cookie without a valid SameSite attribute', C, 'L
    'Set SameSite=Lax (or Strict where possible) explicitly.')
 _r('COOKIE-SAMESITE-NONE', 'Cookie sent on all cross-site requests (SameSite=None)', C, 'Medium', 'Low',
    WSTG_COOKIE, PASSIVE_COOKIES,
-   'The cookie uses SameSite=None, so the browser attaches it to cross-site requests.',
-   'Increases exposure to cross-site request forgery and cross-site leaks if the cookie authenticates the user. '
-   'Browsers also reject SameSite=None cookies that lack Secure.',
-   'Use SameSite=Lax or Strict unless cross-site delivery is genuinely required, and always combine None with Secure.')
+   'A cookie with a session/authentication-like name uses SameSite=None, so the browser attaches it to '
+   'cross-site requests. This is a heuristic based on the cookie name; SameSite=None is legitimate when '
+   'cross-site delivery is required.',
+   'Increases exposure to cross-site request forgery and cross-site leaks if the cookie authenticates the user.',
+   'Use SameSite=Lax or Strict unless cross-site delivery is genuinely required.')
+_r('COOKIE-SAMESITE-NONE-INSECURE', 'Cookie sets SameSite=None without Secure', C, 'Low', 'Medium', WSTG_COOKIE,
+   PASSIVE_COOKIES,
+   'A cookie sets SameSite=None but not Secure. Current browsers following the SameSite specification reject '
+   'such a cookie, so it is not stored and whatever it was meant to do silently stops working.',
+   'The cookie is dropped by the browser, or (in older browsers) is sent on cross-site requests over plain HTTP. '
+   'If the header itself was delivered over plain HTTP, it was also readable in transit, independent of the browser.',
+   'Add Secure to every SameSite=None cookie, or use SameSite=Lax or Strict if cross-site delivery is not needed.')
 _r('COOKIE-PREFIX-INVALID', 'Cookie violates its __Host-/__Secure- prefix rules', C, 'Low', 'Medium', WSTG_COOKIE,
    PASSIVE_COOKIES,
    'The cookie name uses a __Host- or __Secure- prefix but lacks the attributes the prefix requires, so browsers '
@@ -199,6 +209,22 @@ _r('COOKIE-SENSITIVE-OVER-HTTP', 'Session-like cookie set over unencrypted HTTP'
    'carries a session is inferred from its name.',
    'Anyone able to observe the network can read the cookie.',
    'Serve the application over HTTPS only and mark cookies Secure.')
+_r('COOKIE-SECURE-OVER-HTTP', 'Secure cookie set over plain HTTP', C, 'Low', 'Medium', WSTG_COOKIE, PASSIVE_COOKIES,
+   'A cookie sets the Secure attribute but its Set-Cookie header was delivered over plain HTTP from an origin that '
+   'browsers do not treat as trustworthy (localhost and loopback addresses are excluded).',
+   'The Set-Cookie header, including the cookie value, crossed the network unencrypted, so anyone able to observe '
+   'that connection could read it. This is independent of the browser: browsers that follow RFC 6265bis refuse to '
+   'store a Secure cookie from an insecure origin, so the cookie is not kept or sent later, but that rejection '
+   'happens after the header has already been transmitted. A feature that depends on the cookie also fails, which '
+   'usually means HTTPS is terminated in front of the application or the site is reachable over HTTP by mistake.',
+   'Serve the application over HTTPS only (and redirect HTTP to HTTPS) so Set-Cookie headers are encrypted and '
+   'Secure cookies are accepted.')
+_r('COOKIE-MALFORMED-NAME', 'Cookie with a malformed name', C, 'Low', 'Low', WSTG_COOKIE, PASSIVE_COOKIES,
+   'A Set-Cookie header uses a cookie name that is not a valid token (RFC 6265): it contains spaces, control '
+   'characters, separator characters or non-ASCII characters.',
+   'Browsers, proxies and frameworks may parse or ignore such a cookie differently, so its security attributes '
+   'cannot be assessed reliably. It was not analyzed further.',
+   "Use only token characters in cookie names: letters, digits and !#$%&'*+-.^_`|~.")
 
 # ---------------------------------------------------------------- TLS
 T = 'ssl_tls'

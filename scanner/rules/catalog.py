@@ -257,9 +257,10 @@ _r('TLS-CERT-EXPIRING-SOON', 'TLS certificate expires soon', T, 'Low', 'Medium',
    'The certificate is valid but expires within 30 days.',
    'An expired certificate causes outages and browser warnings.', 'Renew the certificate before it expires.')
 _r('TLS-PROTOCOL-OBSOLETE', 'Obsolete TLS protocol version accepted', T, 'Medium', 'Medium', WSTG_TLS, TLS_PROBE,
-   'The server completed a handshake using TLS 1.0 or TLS 1.1, which are deprecated (RFC 8996).',
+   'The server completed a handshake using an obsolete protocol version: TLS 1.0 or TLS 1.1 (deprecated by RFC 8996), '
+   'SSL 3.0 (prohibited by RFC 7568) or SSL 2.0 (prohibited by RFC 6176).',
    'These versions have known weaknesses and fail modern compliance baselines (e.g. PCI DSS).',
-   'Disable TLS 1.0 and 1.1; support TLS 1.2 and 1.3 only.')
+   'Disable SSL 2.0, SSL 3.0, TLS 1.0 and TLS 1.1; support TLS 1.2 and 1.3 only.')
 _r('TLS-LEGACY-UNTESTED', 'Legacy TLS versions could not be tested from the scanner host', T, 'Low', 'Low',
    WSTG_TLS, TLS_PROBE,
    'The scanner\'s local TLS library refuses to attempt TLS 1.0/1.1, so whether the server accepts them is unknown. '

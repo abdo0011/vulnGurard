@@ -32,11 +32,13 @@ _FORBIDDEN_HEADERS = {'host', 'cookie', 'authorization', 'proxy-authorization', 
 class FetchError(Exception):
     """A request failed. `kind` is machine-readable; `message` is safe to display."""
 
-    def __init__(self, kind, message, verify_message=None):
+    def __init__(self, kind, message, verify_message=None, verify_code=None):
         super().__init__(message)
         self.kind = kind
         self.message = message
         self.verify_message = verify_message   # certificate verification detail, if any
+        self.verify_code = verify_code         # OpenSSL X509_V_ERR_* number for certificate failures, if known
+        self.url = None                        # the URL (request or redirect hop) that failed; set by request()
 
 
 class RequestBudgetExceeded(Exception):
@@ -154,7 +156,12 @@ class ScanHTTPClient:
         current = check_in_scope(url, self.origin, self.config)
         chain = []
         for _hop in range(cfg.MAX_REDIRECTS + 1):
-            resp = self._single_request(method, current, extra, verify_tls)
+            try:
+                resp = self._single_request(method, current, extra, verify_tls)
+            except FetchError as exc:
+                if exc.url is None:
+                    exc.url = current              # which hop failed (internal: never displayed raw)
+                raise
             location = resp.header('location')
             if not (follow_redirects and resp.status in REDIRECT_STATUSES and location):
                 resp.redirect_chain = chain
@@ -248,7 +255,8 @@ class ScanHTTPClient:
                     elapsed=self._clock() - start)
             except ssl.SSLCertVerificationError as exc:
                 raise FetchError('tls_cert_invalid', 'TLS certificate verification failed.',
-                                 verify_message=getattr(exc, 'verify_message', None))
+                                 verify_message=getattr(exc, 'verify_message', None),
+                                 verify_code=getattr(exc, 'verify_code', None))
             except ssl.SSLError:
                 raise FetchError('tls_error', 'TLS handshake failed.')
             except (socket.timeout, TimeoutError):

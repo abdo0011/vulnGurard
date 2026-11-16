@@ -69,6 +69,7 @@ class CrawlResult:
     skipped: list = field(default_factory=list)       # [(url, reason)]
     errors: list = field(default_factory=list)        # [(url, kind)]
     stopped_reason: object = None                     # e.g. 'request_budget'
+    tls_failures: list = field(default_factory=list)  # [(url, verify_code, verify_message)] certificate failures
 
     def __repr__(self):
         # skipped/errors hold raw URLs: show only counts and the machine-readable reason/kind codes.
@@ -107,6 +108,8 @@ def crawl(client, start_url, max_depth=cfg.MAX_DEPTH, max_pages=cfg.MAX_PAGES, p
             break
         except FetchError as exc:
             result.errors.append((url, exc.kind))
+            if exc.kind == 'tls_cert_invalid':      # keep WHY it failed (read by the TLS detector; no new request)
+                result.tls_failures.append((exc.url or url, exc.verify_code, exc.verify_message))
             if depth == 0 and exc.kind != 'tls_cert_invalid':
                 break
             if depth == 0:

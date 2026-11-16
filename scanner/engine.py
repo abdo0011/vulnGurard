@@ -15,6 +15,7 @@ from .detectors import get_detectors
 from .http_client import RequestBudgetExceeded, ScanHTTPClient
 from .models import SEVERITIES, Finding
 from .result_processor import dedupe, redact
+from .sanitize import sanitize_url
 from .scope_validator import validate_scan_request
 
 NOW_FMT = '%Y-%m-%d %H:%M:%S'
@@ -22,7 +23,7 @@ NOW_FMT = '%Y-%m-%d %H:%M:%S'
 STAGES = ('validating', 'crawling', 'analysing', 'finalising', 'done')
 
 
-@dataclass
+@dataclass(repr=False)
 class ScanContext:
     """Everything a detector may use. Network access goes through `client` only."""
     target: object
@@ -31,8 +32,12 @@ class ScanContext:
     config: object
     crawl_result: object = None
 
+    def __repr__(self):                 # representation only: nested reprs are safe; config/client are not echoed
+        return (f'ScanContext(target={self.target!r}, pages=<{len(self.pages)} pages>, '
+                f'crawl_result={self.crawl_result!r})')
 
-@dataclass
+
+@dataclass(repr=False)
 class ScanOutcome:
     target: str
     status: str = 'running'            # completed | completed_with_errors | failed
@@ -46,6 +51,13 @@ class ScanOutcome:
     notes: list = field(default_factory=list)
     started_at: str = ''
     completed_at: str = ''
+
+    def __repr__(self):
+        # `target` is the user's raw scan URL (may hold secrets), so it is shown sanitized. Findings have a
+        # safe repr; errors/notes are summarized by count, since they are free text.
+        return (f'ScanOutcome(target={sanitize_url(self.target)!r}, status={self.status!r}, stage={self.stage!r}, '
+                f'findings={self.findings!r}, pages_crawled={self.pages_crawled}, requests_used={self.requests_used}, '
+                f'checks={self.checks_done}/{self.checks_total}, errors=<{len(self.errors)}>, notes=<{len(self.notes)}>)')
 
     def severity_counts(self):
         return {s: sum(1 for f in self.findings if f.severity == s) for s in SEVERITIES}

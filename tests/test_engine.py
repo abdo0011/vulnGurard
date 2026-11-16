@@ -20,6 +20,25 @@ def finding(rule, url, **kw):
                    detection_method='test', **kw)
 
 
+@pytest.fixture(autouse=True)
+def isolated_registry(request):
+    """
+    Most tests here exercise the engine with throw-away detectors and exact finding counts, so by
+    default the real detectors are hidden. Tests marked @pytest.mark.real_detectors opt out and run
+    against the real registry (see the integration tests at the end of this file).
+    """
+    if request.node.get_closest_marker('real_detectors'):
+        yield
+        return
+    from scanner.detectors import _REGISTRY, discover
+    discover()
+    saved = dict(_REGISTRY)
+    _REGISTRY.clear()
+    yield
+    _REGISTRY.clear()
+    _REGISTRY.update(saved)
+
+
 @pytest.fixture
 def detectors():
     """Register throw-away detectors for one test and remove them afterwards."""
@@ -197,3 +216,60 @@ def test_app_refuses_network_binding_without_token(tmp_path):
 def test_app_refuses_debug_on_network_even_with_token(tmp_path):
     r = _run_app(tmp_path, VULNGUARD_HOST='0.0.0.0', VULNGUARD_API_TOKEN='t' * 32, FLASK_DEBUG='1')
     assert r.returncode != 0 and 'debug' in r.stderr.lower()
+
+
+# ---------------------------------------------------------------- real detectors through the real engine
+REAL_HEADERS = {'Content-Type': 'text/html', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
+                'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=()'}
+
+
+@pytest.mark.real_detectors
+def test_real_registry_is_visible_in_this_module():
+    """Guards the opt-out: the marker must leave real detectors registered."""
+    assert 'security-headers' in {d.name for d in get_detectors()}
+
+
+@pytest.mark.real_detectors
+def test_real_security_headers_detector_runs_through_engine_with_all_categories(make_server, engine):
+    srv = make_server({'/': (200, REAL_HEADERS, b'<a href="/a">a</a>'), '/a': (200, REAL_HEADERS, b'<p>a</p>')})
+    out = engine.run(srv.base + '/', True)                         # no category filter: every real detector
+    assert out.status == 'completed' and out.errors == []
+    assert out.checks_total == len(get_detectors()) + 1 and out.checks_done == out.checks_total
+    assert {f.rule_id for f in out.findings} == {'HDR-CSP-MISSING'}   # plain HTTP: HSTS not applicable
+    f = out.findings[0]
+    assert f.category == 'security_headers' and f.severity == 'Medium' and f.confidence == 'Confirmed'
+    assert sorted(f.affected_urls) == [srv.base + '/', srv.base + '/a'] and 'HTTP 200' in f.evidence
+    assert out.requests_used == len(srv.seen) == 2                 # the passive detector made no requests
+
+
+@pytest.mark.real_detectors
+def test_real_detector_runs_alongside_a_custom_detector_and_category_filter_applies(make_server, engine, detectors):
+    class Extra(BaseDetector):
+        category, name = 'cookie_security', 't-extra'
+        def run(self, ctx): return [finding('RULE-EXTRA', ctx.pages[0].url)]
+    detectors(Extra)
+    srv = make_server({'/': (200, REAL_HEADERS, b'x')})
+    both = engine.run(srv.base + '/', True)
+    assert {f.rule_id for f in both.findings} == {'HDR-CSP-MISSING', 'RULE-EXTRA'}
+    only_headers = engine.run(srv.base + '/', True, {'security_headers'})
+    assert {f.rule_id for f in only_headers.findings} == {'HDR-CSP-MISSING'}
+    only_cookies = engine.run(srv.base + '/', True, {'cookie_security'})
+    assert {f.rule_id for f in only_cookies.findings} == {'RULE-EXTRA'}
+
+
+@pytest.mark.real_detectors
+def test_real_detector_findings_pass_through_redaction_and_dedupe(make_server, engine):
+    headers = {**REAL_HEADERS, 'Content-Security-Policy': "script-src 'nonce-ENGINESECRET' 'unsafe-eval'"}
+    srv = make_server({'/': (200, headers, b'<a href="/a">a</a>'), '/a': (200, headers, b'<p>a</p>')})
+    out = engine.run(srv.base + '/', True)
+    assert [f.rule_id for f in out.findings] == ['HDR-CSP-UNSAFE']          # two pages, one finding
+    assert 'ENGINESECRET' not in out.findings[0].evidence and len(out.findings[0].affected_urls) == 2
+
+
+@pytest.mark.real_detectors
+def test_real_detector_meta_csp_through_engine(make_server, engine):
+    body = b'<html><head><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; frame-ancestors \'none\'"></head></html>'
+    headers = {k: v for k, v in REAL_HEADERS.items() if k != 'X-Frame-Options'}
+    srv = make_server({'/': (200, headers, body)})
+    out = engine.run(srv.base + '/', True)
+    assert {f.rule_id for f in out.findings} == {'HDR-CSP-META-ONLY', 'HDR-XFO-MISSING'}

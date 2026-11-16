@@ -1,1 +1,2 @@
 pytest>=8
+cryptography>=42    # tests/test_tls_handshakes.py only: generates the test certificates (never imported by the scanner)

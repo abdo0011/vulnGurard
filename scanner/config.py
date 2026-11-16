@@ -9,7 +9,7 @@ read from the environment.
 import hmac
 import ipaddress
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # ---- hard safety ceilings (approved in Phase 1/2 review) -------------------
 MAX_DEPTH = 2                 # crawl depth: start page = 0, links from depth 2 are not followed
@@ -97,7 +97,7 @@ def _parse_list(raw):
 class ScannerConfig:
     allowlist: frozenset          # approved target hosts (every scan must match)
     lab_targets: frozenset        # subset allowed to resolve to loopback/private ranges
-    api_token: object = None      # str or None
+    api_token: object = field(default=None, repr=False)      # str or None; a credential: never part of repr()
 
 
 def load_config(env=None):

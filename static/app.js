@@ -82,11 +82,13 @@ function debounce(fn, ms) {
 
 /* ---------------------------------------------------------------- routing */
 function route() {
-    const view = location.hash === '#assets' ? 'assets' : 'dashboard';
-    document.getElementById('view-dashboard').classList.toggle('d-none', view !== 'dashboard');
-    document.getElementById('view-assets').classList.toggle('d-none', view !== 'assets');
-    document.getElementById('nav-dashboard').classList.toggle('active', view === 'dashboard');
-    document.getElementById('nav-assets').classList.toggle('active', view === 'assets');
+    const view = { '#assets': 'assets', '#scanner': 'scanner' }[location.hash] || 'dashboard';
+    for (const name of ['dashboard', 'assets', 'scanner']) {
+        document.getElementById('view-' + name).classList.toggle('d-none', view !== name);
+        document.getElementById('nav-' + name).classList.toggle('active', view === name);
+    }
+    if (view === 'scanner') { initScannerView(); return; }
+    stopScanPolling();
     refreshAll();
 }
 

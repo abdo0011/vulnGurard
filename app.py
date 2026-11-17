@@ -7,7 +7,13 @@ import ipaddress
 import os
 import re
 import shutil
+import socket
 from io import StringIO
+
+import scan_service
+from scanner import config as scan_config
+from scanner.engine import ScanEngine
+from scanner.scope_validator import ScopeError, validate_scan_request
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB upload limit
@@ -104,6 +110,7 @@ def init_db():
             "UPDATE vulnerabilities SET asset_id = "
             "(SELECT a.id FROM assets a WHERE LOWER(a.name) = LOWER(TRIM(vulnerabilities.asset))) "
             "WHERE asset_id IS NULL AND asset IS NOT NULL AND TRIM(asset) <> ''")
+        scan_service.init_tables(conn)       # additive: new scan tables only, existing tables untouched
         conn.commit()
     finally:
         conn.close()
@@ -565,6 +572,133 @@ def get_stats():
         stats['assets_by_type'] = [dict(r) for r in conn.execute(
             'SELECT asset_type AS type, COUNT(*) AS count FROM assets GROUP BY asset_type ORDER BY count DESC').fetchall()]
     return jsonify(stats)
+
+
+# ---------------------------------------------------------------------------
+# Scanner (all scanning logic lives in the scanner package; see scan_service.py)
+# ---------------------------------------------------------------------------
+scan_manager = scan_service.ScanManager()
+
+INVALID_SCAN_CONFIG_MESSAGE = (
+    'The scanner configuration is invalid. Check VULNGUARD_SCAN_ALLOWLIST and VULNGUARD_LAB_TARGETS: use '
+    'comma-separated exact hosts, optionally host:port (IPv6 in brackets), without wildcards, URLs or paths.')
+
+
+@app.errorhandler(scan_config.ConfigError)
+def handle_invalid_scan_config(_exc):
+    """
+    load_config() raises ConfigError for malformed scope variables. Answer with a fixed, actionable 4xx instead of a
+    500. The exception text is deliberately not returned (it echoes the offending value); nothing is logged either.
+    Validation is unchanged: an invalid configuration still means no scan can run.
+    """
+    return error(INVALID_SCAN_CONFIG_MESSAGE, 400, code='invalid_scanner_config')
+
+
+def scan_runtime():
+    """Scanner configuration, DNS resolver and engine. Tests may override these through app.config."""
+    config = app.config.get('SCAN_CONFIG') or scan_config.load_config()
+    resolver = app.config.get('SCAN_RESOLVER') or socket.getaddrinfo
+    factory = app.config.get('SCAN_ENGINE_FACTORY')
+    engine = factory(config, resolver) if factory else ScanEngine(config=config, resolver=resolver)
+    return config, resolver, engine
+
+
+def scanner_token_error(config):
+    """When VULNGUARD_API_TOKEN is set (required for non-loopback binding) scanner routes demand it."""
+    if not scan_config.verify_api_token(config, request.headers.get('X-API-Token')):
+        return error('A valid API token is required (X-API-Token).', 401, code='token_required')
+    return None
+
+
+@app.route('/api/scanner/options', methods=['GET'])
+def scanner_options():
+    config = app.config.get('SCAN_CONFIG') or scan_config.load_config()
+    denied = scanner_token_error(config)
+    if denied:
+        return denied
+    with db() as conn:
+        assets = [dict(r) for r in conn.execute('SELECT id, name FROM assets ORDER BY name COLLATE NOCASE')]
+    return jsonify({
+        'categories': scan_service.available_categories(),
+        'assets': assets,
+        'limits': {'max_depth': scan_config.MAX_DEPTH, 'max_pages': scan_config.MAX_PAGES,
+                   'max_requests': scan_config.MAX_REQUESTS,
+                   'max_requests_per_second': round(1 / scan_config.MIN_REQUEST_INTERVAL, 1)},
+        'allowlist_configured': bool(config.allowlist),
+        'busy': scan_manager.is_busy(),
+    })
+
+
+@app.route('/api/scans', methods=['POST'])
+def start_scan():
+    config, resolver, engine = scan_runtime()
+    denied = scanner_token_error(config)
+    if denied:
+        return denied
+    data = get_json_body()
+    if data is None:
+        return error('Request body must be a JSON object.')
+
+    url = data.get('target')
+    if not isinstance(url, str) or not url.strip():
+        return error('A target URL is required.', code='invalid_url')
+    if len(url) > scan_service.MAX_TARGET_CHARS:
+        return error('Enter a valid http:// or https:// URL.', code='invalid_url')
+
+    available = [c['id'] for c in scan_service.available_categories()]
+    categories = data.get('categories')
+    if categories is None:
+        categories = available
+    if (not isinstance(categories, list) or not categories
+            or not all(isinstance(c, str) and c in available for c in categories)):
+        return error('Choose at least one valid scan category.', code='invalid_categories')
+    categories = [c for c in available if c in categories]       # canonical order, no duplicates
+
+    asset_id = data.get('asset_id')
+    if asset_id in (None, ''):
+        asset_id = None
+    else:
+        if isinstance(asset_id, bool) or not isinstance(asset_id, int):
+            return error('Invalid asset selected.', code='invalid_asset')
+        with db() as conn:
+            if not conn.execute('SELECT 1 FROM assets WHERE id = ?', (asset_id,)).fetchone():
+                return error('The selected asset does not exist.', 404, code='invalid_asset')
+
+    # Pre-flight with the scanner's own validator (authorization, parsing, allowlist, DNS, address checks) so a
+    # rejected target is a clear 4xx and no scan record is created. The engine validates again before any request.
+    try:
+        validate_scan_request(url, data.get('authorized'), config, resolver)
+    except ScopeError as exc:
+        status = 400 if exc.code in ('authorization_required', 'invalid_url', 'scheme_not_allowed',
+                                     'credentials_in_url', 'invalid_host') else 403
+        return error(scan_service.scope_message(exc), status, code=exc.code)
+
+    scan_id = scan_manager.start(get_db, engine, url.strip(), categories, asset_id)
+    if scan_id is None:
+        return error('A scan is already running. Wait for it to finish before starting another.', 409,
+                     code='scan_in_progress')
+    return jsonify({'id': scan_id, 'status': 'running'}), 202
+
+
+@app.route('/api/scans', methods=['GET'])
+def list_scans():
+    denied = scanner_token_error(app.config.get('SCAN_CONFIG') or scan_config.load_config())
+    if denied:
+        return denied
+    with db() as conn:
+        return jsonify({'scans': scan_service.list_scans(conn), 'busy': scan_manager.is_busy()})
+
+
+@app.route('/api/scans/<int:scan_id>', methods=['GET'])
+def get_scan(scan_id):
+    denied = scanner_token_error(app.config.get('SCAN_CONFIG') or scan_config.load_config())
+    if denied:
+        return denied
+    with db() as conn:
+        scan = scan_service.get_scan(conn, scan_id)
+    if scan is None:
+        return error('Scan not found.', 404)
+    return jsonify(scan)
 
 
 # ---------------------------------------------------------------------------

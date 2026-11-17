@@ -3,18 +3,24 @@ Shared fixtures. All network traffic in tests goes to servers started here on 12
 host names such as lab.test are mapped to loopback by a fake resolver, so nothing external
 is ever contacted.
 """
+import os
 import shutil
 import socket
 import ssl
 import subprocess
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from scanner.config import ScannerConfig
-from scanner.http_client import ScanHTTPClient
-from scanner.scope_validator import validate_target
+# app.py initialises its SQLite database when it is imported. Point it at a throw-away file BEFORE anything can
+# import it, so running the tests can never touch the real vulnerabilities.db.
+os.environ['VULNGUARD_DB'] = os.path.join(tempfile.mkdtemp(prefix='vulnguard-tests-'), 'import-time.db')
+
+from scanner.config import ScannerConfig        # noqa: E402  (must follow the VULNGUARD_DB setup above)
+from scanner.http_client import ScanHTTPClient  # noqa: E402
+from scanner.scope_validator import validate_target  # noqa: E402
 
 
 class FakeClock:

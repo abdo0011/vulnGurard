@@ -46,7 +46,7 @@ Web Vulnerability Scanner (Phase 3, scanner package)
 - Security headers detection (missing or misconfigured HTTP security headers).
 - Cookie security detection (Secure, HttpOnly and SameSite attributes).
 - Passive SSL/TLS security detection (certificate verification failures and obsolete negotiated protocols).
-- The scanner is implemented as a Python package (scanner/). It is not yet connected to the Flask application, dashboard or API. See Scanner Capabilities below.
+- The scanner is a Python package (scanner/) and is available in the web dashboard through the Scanner tab (Phase 4). See Scanner Capabilities and Using the Scanner below.
 
 Scanner Capabilities
 
@@ -85,9 +85,50 @@ Scan limits and safety
 - Fixed limits in scanner/config.py: crawl depth 2, 20 pages, 100 requests per scan, at most 2 requests per second.
 - Finding evidence is redacted and URLs are sanitized before output.
 
+Using the Scanner (dashboard)
+
+1. Set the hosts you are authorized to test, then start the app. Windows PowerShell:
+   $env:VULNGUARD_SCAN_ALLOWLIST = "app.example.com:443"
+   python app.py
+   Linux/macOS (bash):
+   VULNGUARD_SCAN_ALLOWLIST=app.example.com:443 python app.py
+   Environment variables set this way last only for the current terminal session. Hosts that resolve to loopback or private addresses are refused unless they are also listed in VULNGUARD_LAB_TARGETS (for local lab targets only). Link-local and cloud-metadata addresses are always refused.
+2. Open http://127.0.0.1:5000 and select the Scanner tab.
+3. Enter the target URL, choose the checks, optionally link the scan to an existing asset, tick the authorization confirmation, and start the scan.
+4. The scan runs in the background (one scan at a time). Status updates on the page; when it finishes, findings are shown grouped by severity with description, affected URLs, evidence and remediation. Recent scans are listed and can be reopened.
+
+Environment variables
+
+- VULNGUARD_SCAN_ALLOWLIST: required. Comma-separated list of the exact hosts that may be scanned. Each entry is host or host:port, for example "app.example.com:443,127.0.0.1:8000". An entry without a port allows every port on that host, so prefer host:port for tighter scope. IPv6 addresses must be in brackets, for example "[::1]:5000". Entries are case-insensitive and spaces around commas are ignored. Wildcards (*.example.com), URLs (http://...), paths, CIDR ranges (10.0.0.0/8) and a bare IPv6 address are rejected. If it is empty or unset, every scan target is refused.
+- VULNGUARD_LAB_TARGETS: optional. Same format. Lists hosts (a subset of the allowlist) that may resolve to loopback or private addresses, for local lab targets only. Link-local and cloud-metadata addresses stay blocked even here.
+- VULNGUARD_API_TOKEN: optional on localhost. If set, the scanner endpoints require it in an X-API-Token header, and the Scanner page asks for it after the first refused request. It must be at least 16 characters when the app listens on a non-loopback address (VULNGUARD_HOST), which is refused without it.
+- If the scope variables are malformed, the Scanner page and scanner API return a clear "scanner configuration is invalid" error (HTTP 400) and no scan runs; fix the value and restart the app.
+
+Local lab setup (Windows PowerShell, localhost only)
+
+1. Window 1, a harmless lab target bound to loopback only:
+   mkdir $env:TEMP\lab -Force | Out-Null
+   Set-Location $env:TEMP\lab
+   "hello" | Out-File index.html
+   python -m http.server 8000 --bind 127.0.0.1
+2. Window 2, the application (from the project folder):
+   pip install -r requirements.txt
+   $env:VULNGUARD_SCAN_ALLOWLIST = "127.0.0.1:8000"
+   $env:VULNGUARD_LAB_TARGETS = "127.0.0.1:8000"
+   Remove-Item Env:VULNGUARD_HOST -ErrorAction SilentlyContinue
+   Remove-Item Env:FLASK_DEBUG -ErrorAction SilentlyContinue
+   python app.py
+3. Open http://127.0.0.1:5000/#scanner, enter http://127.0.0.1:8000/ as the target, tick the authorization box and start the scan.
+   Use 127.0.0.1 rather than localhost so Windows does not try the IPv6 address first.
+
+- Scans and findings are stored in two new SQLite tables (scans, scan_findings). Existing assets and vulnerabilities are not modified, and findings are not automatically added to the vulnerability list.
+- If VULNGUARD_API_TOKEN is set, the scanner endpoints require it (the page asks for it).
+- Scanner API: GET /api/scanner/options, POST /api/scans, GET /api/scans, GET /api/scans/<id>.
+
 Not yet implemented
 
-- Integration of the scanner into the Flask application (no scan routes, dashboard pages or UI yet).
+- Promoting scan findings to the vulnerability list automatically (scan results are kept separately for now).
+- Scheduled or concurrent scans (one scan runs at a time).
 - Information disclosure and security configuration detectors (rules are defined in the catalog, but no detectors run them yet).
 - TLS rules that are defined in the catalog but have no detector yet: certificate expiring soon, HTTP without redirect to HTTPS, HTTP-only sites, and login over HTTP.
 - Active probing of legacy TLS protocol support.
@@ -158,7 +199,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 python -m pytest
 
-Latest reported result (after Phase 3 Feature 3, commit ae9776d): 1608 passed.
+Latest result (Phase 4 scanner integration, uncommitted work on phase-3): 1711 passed.
 
 The cryptography package in requirements-dev.txt is used only by the TLS handshake tests to generate test certificates. It is not used by the scanner itself.
 
@@ -184,6 +225,5 @@ Future Improvements
 - Advanced filtering and search.
 - Detailed vulnerability reports.
 - More security assessment integrations.
-- Connect the scanner to the Flask application (scan requests, results in the dashboard).
 - Additional scanner detectors (information disclosure, security configuration).
 - Improved dashboard analytics.

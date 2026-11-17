@@ -195,8 +195,18 @@ def test_scanner_package_has_no_print_or_logging_sinks():
     assert offenders == [], f'{offenders} print/log; make sure raw URLs and secrets are never emitted'
 
 
-def test_flask_app_does_not_serialize_scanner_findings_yet():
-    """app.py only uses scanner.config for the network-binding guard; finding serialization arrives in a later phase."""
+def test_flask_app_does_not_serialize_scanner_findings_itself():
+    """
+    Phase 4 connects the scanner to Flask, but only through scan_service.py. app.py may import the scanner entry
+    points, yet it must never touch Finding objects or their raw URLs: findings are stored and returned only via
+    Finding.to_dict() inside scan_service.
+    """
     text = (ROOT / 'app.py').read_text(encoding='utf-8')
     assert re.findall(r'^\s*(?:from|import)\s+scanner[\w.]*.*$', text, re.M) == [
+        'from scanner import config as scan_config',
+        'from scanner.engine import ScanEngine',
+        'from scanner.scope_validator import ScopeError, validate_scan_request',
         '    from scanner.config import ConfigError, check_network_binding, ENV_API_TOKEN, ENV_HOST']
+    assert not re.search(r'affected_urls?|\.findings\b|\bFinding\b|jsonify\(\s*(?:outcome|finding)', text)
+    service = (ROOT / 'scan_service.py').read_text(encoding='utf-8')
+    assert 'f.to_dict()' in service and not re.search(r'\.affected_urls', service)      # only the guarded serializer is used

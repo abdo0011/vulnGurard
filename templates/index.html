@@ -19,6 +19,7 @@
             <div class="nav-tabs-app" role="tablist">
                 <a href="#dashboard" class="nav-tab" id="nav-dashboard"><i class="fas fa-gauge-high me-2"></i>Dashboard</a>
                 <a href="#assets" class="nav-tab" id="nav-assets"><i class="fas fa-server me-2"></i>Assets</a>
+                <a href="#scanner" class="nav-tab" id="nav-scanner"><i class="fas fa-satellite-dish me-2"></i>Scanner</a>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span class="live-indicator"><span></span> SYSTEM ONLINE</span>
@@ -216,6 +217,65 @@
                 </div>
             </div>
         </div>
+    </main>
+
+    <!-- ===================== SCANNER VIEW ===================== -->
+    <main class="container-fluid dashboard-shell d-none" id="view-scanner">
+        <section class="page-heading">
+            <div>
+                <div class="eyebrow">ASSESSMENT <span>/</span> WEB SCANNER</div>
+                <h1>Vulnerability <span>Scanner</span></h1>
+                <p>Run passive security checks (headers, cookies, SSL/TLS) against targets you are authorized to assess.</p>
+            </div>
+        </section>
+
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <div class="card"><div class="card-body">
+                    <h5 class="card-title mb-3">New scan</h5>
+                    <form id="scanForm" novalidate>
+                        <div class="mb-3">
+                            <label class="form-label" for="scan-target">Target URL</label>
+                            <input type="text" class="form-control" id="scan-target" maxlength="2048" placeholder="https://app.example.com/" autocomplete="off" required>
+                            <div class="form-text">Only hosts on the scan allowlist (<code>VULNGUARD_SCAN_ALLOWLIST</code>) can be scanned.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Checks</label>
+                            <div id="scan-categories" class="d-flex flex-column gap-1"><span class="text-muted">Loading...</span></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="scan-asset">Link to asset (optional)</label>
+                            <select class="form-select" id="scan-asset"><option value="">No asset</option></select>
+                        </div>
+                        <div class="mb-3 d-none" id="scan-token-group">
+                            <label class="form-label" for="scan-token">API token</label>
+                            <input type="password" class="form-control" id="scan-token" autocomplete="off">
+                            <div class="form-text">This server requires an API token (VULNGUARD_API_TOKEN). It is kept in this page only.</div>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="scan-authorized">
+                            <label class="form-check-label" for="scan-authorized">I confirm I own this system or have explicit permission to assess it.</label>
+                        </div>
+                        <div class="alert alert-danger py-2 d-none" id="scan-form-error" role="alert"></div>
+                        <button type="submit" class="btn btn-add" id="scan-submit"><i class="fas fa-play me-2"></i>Start scan</button>
+                        <div class="form-text mt-2" id="scan-limits"></div>
+                    </form>
+                </div></div>
+            </div>
+            <div class="col-lg-7">
+                <div class="card"><div class="card-body">
+                    <h5 class="card-title mb-3">Recent scans</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead><tr><th>Target</th><th>Status</th><th>Findings</th><th>Started</th><th></th></tr></thead>
+                            <tbody id="scan-history"><tr><td colspan="5" class="text-muted">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div></div>
+            </div>
+        </div>
+
+        <div class="card mt-3 d-none" id="scan-result-card"><div class="card-body" id="scan-result"></div></div>
     </main>
 
     <!-- ===================== ASSETS VIEW ===================== -->
@@ -458,6 +518,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='vendor/chart.umd.js') }}"></script>
+    <script src="{{ url_for('static', filename='scanner.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
